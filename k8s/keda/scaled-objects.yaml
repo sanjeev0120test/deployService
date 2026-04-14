@@ -1,0 +1,59 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: fastify-service-scaledobject
+  namespace: deploy-services
+spec:
+  scaleTargetRef:
+    name: fastify-service
+  minReplicaCount: 2
+  maxReplicaCount: 8
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.deploy-services.svc.cluster.local:9090
+        metricName: http_requests_total
+        query: sum(rate(http_requests_total{job="fastify-service"}[1m]))
+        threshold: "50"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: nextjs-service-scaledobject
+  namespace: deploy-services
+spec:
+  scaleTargetRef:
+    name: nextjs-service
+  minReplicaCount: 2
+  maxReplicaCount: 8
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.deploy-services.svc.cluster.local:9090
+        metricName: http_requests_total
+        query: sum(rate(http_requests_total{job="nextjs-service"}[1m]))
+        threshold: "50"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: fastapi-service-scaledobject
+  namespace: deploy-services
+spec:
+  scaleTargetRef:
+    name: fastapi-service
+  minReplicaCount: 2
+  maxReplicaCount: 8
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.deploy-services.svc.cluster.local:9090
+        metricName: http_requests_total
+        query: sum(rate(http_requests_total{job="fastapi-service"}[1m]))
+        threshold: "50"

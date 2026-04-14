@@ -1,0 +1,45 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: deploy-services-ingress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "deploy-services.labels" . | nindent 4 }}
+  annotations:
+    {{- range $k, $v := .Values.ingress.annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - http:
+        paths:
+          {{- if .Values.fastifyService.enabled }}
+          - path: /fastify(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ .Values.fastifyService.name }}
+                port:
+                  number: {{ .Values.fastifyService.port }}
+          {{- end }}
+          {{- if .Values.nextjsService.enabled }}
+          - path: /nextjs(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ .Values.nextjsService.name }}
+                port:
+                  number: {{ .Values.nextjsService.port }}
+          {{- end }}
+          {{- if .Values.fastapiService.enabled }}
+          - path: /fastapi(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ .Values.fastapiService.name }}
+                port:
+                  number: {{ .Values.fastapiService.port }}
+          {{- end }}
+{{- end }}

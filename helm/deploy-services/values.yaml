@@ -1,0 +1,111 @@
+namespace: deploy-services
+
+fastifyService:
+  enabled: true
+  name: fastify-service
+  replicaCount: 2
+  image:
+    repository: ghcr.io/sanjeev0120test/fastify-service
+    tag: f74d3a95ac76afa483660832c5e8a545f2368a83
+    pullPolicy: IfNotPresent
+  port: 3001
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  env:
+    PORT: "3001"
+    NODE_ENV: "production"
+    OTEL_SERVICE_NAME: "fastify-service"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.deploy-services.svc.cluster.local:4318"
+    LOG_LEVEL: "info"
+  probes:
+    liveness:
+      path: /health
+    readiness:
+      path: /ready
+  metricsPath: /metrics
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPU: 70
+
+nextjsService:
+  enabled: true
+  name: nextjs-service
+  replicaCount: 2
+  image:
+    repository: ghcr.io/sanjeev0120test/nextjs-service
+    tag: f74d3a95ac76afa483660832c5e8a545f2368a83
+    pullPolicy: IfNotPresent
+  port: 3002
+  readOnlyRootFilesystem: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  env:
+    PORT: "3002"
+    NODE_ENV: "production"
+    OTEL_SERVICE_NAME: "nextjs-service"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.deploy-services.svc.cluster.local:4318"
+    NEXT_PUBLIC_BASE_URL: "http://localhost:3002"
+  probes:
+    liveness:
+      path: /api/health
+    readiness:
+      path: /api/ready
+  metricsPath: /api/metrics
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPU: 70
+
+fastapiService:
+  enabled: true
+  name: fastapi-service
+  replicaCount: 2
+  image:
+    repository: ghcr.io/sanjeev0120test/fastapi-service
+    tag: f74d3a95ac76afa483660832c5e8a545f2368a83
+    pullPolicy: IfNotPresent
+  port: 8000
+  readOnlyRootFilesystem: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  env:
+    PORT: "8000"
+    OTEL_SERVICE_NAME: "fastapi-service"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.deploy-services.svc.cluster.local:4318"
+    LOG_LEVEL: "INFO"
+  probes:
+    liveness:
+      path: /health
+    readiness:
+      path: /ready
+  metricsPath: /metrics
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPU: 70
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"

@@ -1,0 +1,234 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "20"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: fastify-service
+            path: services/fastify-service
+            lang: node
+          - service: nextjs-service
+            path: services/nextjs-service
+            lang: node
+          - service: fastapi-service
+            path: services/fastapi-service
+            lang: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: matrix.lang == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+
+      - name: Install Node dependencies
+        if: matrix.lang == 'node'
+        run: npm ci
+        working-directory: ${{ matrix.path }}
+
+      - name: Run ESLint
+        if: matrix.lang == 'node'
+        run: npm run lint
+        working-directory: ${{ matrix.path }}
+
+      - name: Setup Python
+        if: matrix.lang == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ruff
+        if: matrix.lang == 'python'
+        run: pip install ruff
+
+      - name: Run ruff
+        if: matrix.lang == 'python'
+        run: ruff check app/ tests/
+        working-directory: ${{ matrix.path }}
+
+  test:
+    name: Test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: fastify-service
+            path: services/fastify-service
+            lang: node
+            cmd: npm test
+          - service: nextjs-service
+            path: services/nextjs-service
+            lang: node
+            cmd: npm test
+          - service: fastapi-service
+            path: services/fastapi-service
+            lang: python
+            cmd: python -m pytest tests/ -v
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: matrix.lang == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+
+      - name: Install Node dependencies
+        if: matrix.lang == 'node'
+        run: npm ci
+        working-directory: ${{ matrix.path }}
+
+      - name: Setup Python
+        if: matrix.lang == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        if: matrix.lang == 'python'
+        run: pip install -r requirements.txt
+        working-directory: ${{ matrix.path }}
+
+      - name: Run tests
+        run: ${{ matrix.cmd }}
+        working-directory: ${{ matrix.path }}
+
+  build:
+    name: Build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: fastify-service
+            path: services/fastify-service
+          - service: nextjs-service
+            path: services/nextjs-service
+          - service: fastapi-service
+            path: services/fastapi-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t ${{ matrix.service }}:ci-${{ github.sha }} ${{ matrix.path }}
+
+      - name: Save image for scan job
+        run: |
+          docker save ${{ matrix.service }}:ci-${{ github.sha }} -o /tmp/${{ matrix.service }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp/${{ matrix.service }}.tar
+          retention-days: 1
+
+  scan:
+    name: Scan (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: fastify-service
+          - service: nextjs-service
+          - service: fastapi-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load -i /tmp/${{ matrix.service }}.tar
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: ${{ matrix.service }}:ci-${{ github.sha }}
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/images
+
+      - name: Load all Docker images
+        run: |
+          for svc in fastify-service nextjs-service fastapi-service; do
+            docker load -i /tmp/images/image-${svc}/${svc}.tar
+            docker tag ${svc}:ci-${{ github.sha }} ${svc}:latest
+          done
+
+      - name: Start services with Docker Compose
+        run: docker compose up -d --no-build
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services..."
+          for i in $(seq 1 40); do
+            HEALTHY=0
+            for url in http://localhost:3001/health http://localhost:3002/api/health http://localhost:8000/health; do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
+              if [ "$STATUS" = "200" ]; then
+                HEALTHY=$((HEALTHY + 1))
+              fi
+            done
+            if [ "$HEALTHY" -ge 3 ]; then
+              echo "All 3 services healthy!"
+              break
+            fi
+            echo "  Attempt $i/40 - $HEALTHY/3 healthy"
+            sleep 5
+          done
+          if [ "$HEALTHY" -lt 3 ]; then
+            echo "ERROR: Not all services became healthy"
+            docker compose ps
+            docker compose logs --tail=50
+            exit 1
+          fi
+
+      - name: Run E2E tests
+        run: bash tests/e2e/run.sh --target docker
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

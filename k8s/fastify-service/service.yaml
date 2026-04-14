@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastify-service
+  namespace: deploy-services
+  labels:
+    app: fastify-service
+spec:
+  type: ClusterIP
+  selector:
+    app: fastify-service
+  ports:
+    - port: 3001
+      targetPort: 3001
+      protocol: TCP
+      name: http

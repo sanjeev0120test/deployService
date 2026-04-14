@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fastify-service-config
+  namespace: deploy-services
+  labels:
+    app: fastify-service
+data:
+  PORT: "3001"
+  NODE_ENV: "production"
+  OTEL_SERVICE_NAME: "fastify-service"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.deploy-services.svc.cluster.local:4318"
+  LOG_LEVEL: "info"

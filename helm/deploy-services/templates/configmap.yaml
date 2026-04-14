@@ -1,0 +1,16 @@
+{{- range $key, $svc := dict "fastifyService" .Values.fastifyService "nextjsService" .Values.nextjsService "fastapiService" .Values.fastapiService }}
+{{- if $svc.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $svc.name }}-config
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $svc.name }}
+data:
+  {{- range $envKey, $envVal := $svc.env }}
+  {{ $envKey }}: {{ $envVal | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

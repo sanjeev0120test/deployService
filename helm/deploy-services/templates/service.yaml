@@ -1,0 +1,21 @@
+{{- range $key, $svc := dict "fastifyService" .Values.fastifyService "nextjsService" .Values.nextjsService "fastapiService" .Values.fastapiService }}
+{{- if $svc.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $svc.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $svc.name }}
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      protocol: TCP
+      name: http
+{{- end }}
+{{- end }}

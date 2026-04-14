@@ -1,0 +1,33 @@
+services:
+  fastify-service:
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-async-connect: "true"
+        tag: fastify-service
+
+  nextjs-service:
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-async-connect: "true"
+        tag: nextjs-service
+
+  fastapi-service:
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-async-connect: "true"
+        tag: fastapi-service

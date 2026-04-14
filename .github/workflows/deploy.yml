@@ -1,0 +1,97 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-push:
+    name: Build & Push (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: fastify-service
+            path: services/fastify-service
+          - service: nextjs-service
+            path: services/nextjs-service
+          - service: fastapi-service
+            path: services/fastapi-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name
+        id: meta
+        run: |
+          IMAGE_NAME="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.service }}"
+          IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+          echo "image=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${IMAGE_NAME}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ steps.meta.outputs.sha_tag }} \
+            -t ${{ steps.meta.outputs.latest_tag }} \
+            ${{ matrix.path }}
+
+      - name: Push to GHCR
+        run: |
+          docker push ${{ steps.meta.outputs.sha_tag }}
+          docker push ${{ steps.meta.outputs.latest_tag }}
+
+  update-manifests:
+    name: Update Helm image tags
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image prefix
+        id: prefix
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "prefix=${{ env.REGISTRY }}/${OWNER}" >> "$GITHUB_OUTPUT"
+
+      - name: Update Helm values with new tags
+        run: |
+          SHA="${{ github.sha }}"
+          PREFIX="${{ steps.prefix.outputs.prefix }}"
+          FILE="helm/deploy-services/values.yaml"
+
+          for svc in fastify-service nextjs-service fastapi-service; do
+            sed -i "s|repository: .*${svc}|repository: ${PREFIX}/${svc}|" "$FILE"
+          done
+          sed -i "s|tag: .*|tag: ${SHA}|g" "$FILE"
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git diff --quiet helm/deploy-services/values.yaml && echo "changed=false" >> "$GITHUB_OUTPUT" || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit updated manifests
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "Sanjeev Mishra"
+          git config user.email "70067566+sanjeev0120test@users.noreply.github.com"
+          git add helm/deploy-services/values.yaml
+          git commit -m "ci: update image tags to ${{ github.sha }}"
+          git push
